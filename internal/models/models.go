@@ -39,6 +39,7 @@ type Order struct {
 	ID int `json:"id"`
 	WidgetID int `json:"widget_id"`
 	TransactionID int `json:"transction_id"`
+	CustomerID int `json:"customer_id"`
 	StatusID int `json:"status_id"`
 	Quantity int `json:"quantity"`
 	Amount int `json:"amount"`
@@ -59,6 +60,10 @@ type Transaction struct {
 	Amount int `json:"amount"`
 	Currency string `json:"currency"`
 	LastFour string `json:"last_four"`
+	ExpiryMonth int `json:"expire_month"`
+	ExpiryYear int `json:"expire_year"`
+	PaymentIntent string `json:"payment_intent"`
+	PaymentMethod string `json:"payment_method"`
 	BankReturnCode string `json:"bank_return_code"`
 	TarnsactionStatusID int `json:"transaction_status_id"`
 	CreatedAt time.Time `json:"-"`
@@ -71,6 +76,15 @@ type User struct {
 	LastName string `json:"last_name"`
 	Email string `json:"email"`
 	Password string `json:"password"`
+	CreatedAt time.Time `json:"-"`
+	UpdatedAt time.Time `json:"-"`
+}
+
+type Customer struct {
+	ID int `json:"id"`
+	FirstName string `json:"first_name"`
+	LastName string `json:"last_name"`
+	Email string `json:"email"`
 	CreatedAt time.Time `json:"-"`
 	UpdatedAt time.Time `json:"-"`
 }
@@ -115,8 +129,9 @@ func (m *DbModel) InsertTransaction(transaction Transaction) (int, error) {
 	defer cancel()
 
 	stmt := `
-		insert into transactions (amount, currency, last_four, bank_return_code, transaction_status_id, created_at, updated_at)
-		values(?,?,?,?,?,?,?)
+		insert into transactions (amount, currency, last_four, bank_return_code, expiry_month, expiry_year, payment_intent,
+			payment_method, transaction_status_id, created_at, updated_at)
+		values(?,?,?,?,?,?,?,?,?,?,?)
 	`
 
 	result,err := m.DB.ExecContext(ctx, stmt,
@@ -124,6 +139,10 @@ func (m *DbModel) InsertTransaction(transaction Transaction) (int, error) {
 		transaction.Currency,
 		transaction.LastFour,
 		transaction.BankReturnCode,
+		transaction.ExpiryMonth,
+		transaction.ExpiryYear,
+		transaction.PaymentIntent,
+		transaction.PaymentMethod,
 		transaction.TarnsactionStatusID,
 		time.Now(),
 		time.Now(),
@@ -145,8 +164,8 @@ func (m *DbModel) InsertOrder(order Order) (int, error) {
 	defer cancel()
 
 	stmt := `
-		insert into orders (widget_id, transaction_id, status_id, quantity, amount, created_at, updated_at)
-		values(?,?,?,?,?,?,?)
+		insert into orders (widget_id, transaction_id, status_id, quantity, customer_id, amount, created_at, updated_at)
+		values(?,?,?,?,?,?,?,?)
 	`
 
 	result,err := m.DB.ExecContext(ctx, stmt,
@@ -154,7 +173,36 @@ func (m *DbModel) InsertOrder(order Order) (int, error) {
 		order.TransactionID,
 		order.StatusID,
 		order.Quantity,
+		order.CustomerID,
 		order.Amount,
+		time.Now(),
+		time.Now(),
+	)
+	if err != nil {
+		return 0, err
+	}
+	id,err := result.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+
+	return int(id), err
+}
+
+func (m *DbModel) InsertCustomer(customer Customer) (int, error) {
+	//se demorar mais de 3 segundos algo esta errado no contexto para o db
+	ctx,cancel := context.WithTimeout(context.Background(), 3 * time.Second)
+	defer cancel()
+
+	stmt := `
+		insert into customers (first_name, last_name, email, created_at, updated_at)
+		values(?,?,?,?,?)
+	`
+
+	result,err := m.DB.ExecContext(ctx, stmt,
+		customer.FirstName,
+		customer.LastName,
+		customer.Email,
 		time.Now(),
 		time.Now(),
 	)

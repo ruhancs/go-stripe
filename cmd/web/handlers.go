@@ -3,10 +3,18 @@ package main
 import (
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/ruhancs/go-stripe/internal/cards"
+	"github.com/ruhancs/go-stripe/internal/models"
 )
+
+func (app *application) Home(w http.ResponseWriter, r *http.Request) {
+	if err := app.renderTemplate(w, r, "home", &templateData{}); err != nil {
+		app.errorLog.Println(err)
+	}
+}
 
 func (app *application) VirtualTerminal(w http.ResponseWriter, r *http.Request) {
 	//renderizar template e inserir o stripe-js para utilizar na template
@@ -15,21 +23,40 @@ func (app *application) VirtualTerminal(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
-func (app *application) PaymentSucceeded(w http.ResponseWriter, r *http.Request) {
+type TransactionData struct {
+	FirstName string
+	LastName string
+	Email string
+	PaymentIntentID string
+	PaymentMethodID string
+	PaymentAmount int
+	PaymentCurrency string
+	LastFour string
+	ExpiryMonth int
+	ExpiryYear int
+	BankReturnCode string
+}
+
+//pegar informacoes do post para comprar e do stripe
+func(app *application) GetTransactionData(r *http.Request) (TransactionData,error) {
+	var transactionData TransactionData
 	err:= r.ParseForm()//pegar erros do formulario
 	if err != nil {
 		app.errorLog.Println(err)
-		return
+		return transactionData,err
 	}
 
 	//read post data
 	//dados do formulario
-	cardHolder := r.Form.Get("cardholder_name")
+	firstName := r.Form.Get("first_name")
+	lastName := r.Form.Get("last_name")
 	email := r.Form.Get("email")
 	paymentIntent := r.Form.Get("payment_intent")
 	paymentMethod := r.Form.Get("payment_method")
 	paymentAmount := r.Form.Get("payment_amount")
 	paymentCurrency := r.Form.Get("payment_currency")
+
+	amount,_ := strconv.Atoi(paymentAmount)
 
 	card := cards.Card{
 		Secret: app.config.stripe.secret,
@@ -39,36 +66,145 @@ func (app *application) PaymentSucceeded(w http.ResponseWriter, r *http.Request)
 	pi, err := card.GetPaymentIntent(paymentIntent)
 	if err != nil {
 		app.errorLog.Println(err)
-		return
+		return transactionData,nil
 	}
 	
 	pm, err := card.GetPaymentMethod(paymentMethod)
 	if err != nil {
 		app.errorLog.Println(err)
-		return
+		return transactionData,nil
 	}
 
 	lastFour := pm.Card.Last4
 	expiryMonth := pm.Card.ExpMonth
 	expiryYear := pm.Card.ExpYear
 
-	data := make(map[string]interface{})
-	data["cardholder"] = cardHolder
-	data["email"] = email
-	data["paymentIntent"] = paymentIntent
-	data["paymentMethod"] = paymentMethod
-	data["paymentAmount"] = paymentAmount
-	data["paymentCurrency"] = paymentCurrency
-	data["last_four"] = lastFour
-	data["expiry_month"] = expiryMonth
-	data["expiry_year"] = expiryYear
-	data["bank_return_code"] = pi.Charges.Data[0].ID
+	transactionData = TransactionData{
+		FirstName: firstName,
+		LastName: lastName,
+		Email: email,
+		PaymentIntentID: paymentIntent,
+		PaymentMethodID: paymentMethod,
+		PaymentAmount: amount,
+		PaymentCurrency: paymentCurrency,
+		LastFour: lastFour,
+		ExpiryMonth: int(expiryMonth),
+		ExpiryYear: int(expiryYear),
+		BankReturnCode: pi.Charges.Data[0].ID,
+	}
+	return transactionData,nil
+}
 
-	if err:= app.renderTemplate(w,r, "succeeded", &templateData{
+func (app *application) PaymentSucceeded(w http.ResponseWriter, r *http.Request) {
+	err:= r.ParseForm()//pegar erros do formulario
+	if err != nil {
+		app.errorLog.Println(err)
+		return
+	}
+
+	widgetID,_ := strconv.Atoi(r.Form.Get("product_id")) 
+
+	transactionData,err := app.GetTransactionData(r)
+	if err != nil {
+		app.errorLog.Panicln(err)
+		return
+	}
+
+	//create customer
+	customerID, err := app.SaveCustomer(transactionData.FirstName,transactionData.LastName,transactionData.Email)
+	if err != nil {
+		app.errorLog.Println(err)
+		return
+	}
+
+	app.infolog.Println(customerID)
+
+	//create transaction
+	transaction := models.Transaction{
+		Amount: transactionData.PaymentAmount,
+		Currency: transactionData.PaymentCurrency,
+		LastFour: transactionData.LastFour,
+		ExpiryMonth: transactionData.ExpiryMonth,
+		ExpiryYear: transactionData.ExpiryYear,
+		PaymentIntent: transactionData.PaymentIntentID,
+		PaymentMethod: transactionData.PaymentMethodID,
+		BankReturnCode: transactionData.BankReturnCode,
+		TarnsactionStatusID: 2,//transaction status cleared ocorreu tudo certo
+	}
+	transactionID,err := app.SaveTransaction(transaction)
+	if err != nil {
+		app.errorLog.Println(err)
+		return
+	}
+	
+	//create order
+	order:= models.Order{
+		WidgetID: widgetID,
+		TransactionID: transactionID,
+		CustomerID: customerID,
+		StatusID: 1,//status cleared
+		Quantity: 1,
+		Amount: transactionData.PaymentAmount,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	_,err = app.SaveOrder(order)
+	if err != nil {
+		app.errorLog.Println(err)
+		return
+	}
+
+	//should write this data to session, and redirect user
+	//inserir o contexto da requisicao na sessao
+	app.Session.Put(r.Context(), "receipt", transactionData)
+
+	//redirecionar para receipt
+	http.Redirect(w,r, "/receipt", http.StatusSeeOther)
+}
+
+func (app *application) Receipt(w http.ResponseWriter, r *http.Request) {
+	txn := app.Session.Get(r.Context(), "receipt").(TransactionData)//pegar os dados da requisicao em receipt apos o pagamento
+	data := make(map[string]interface{})
+	data["txn"] = txn
+	app.Session.Remove(r.Context(), "receipt")// remover os dados da sessao apos utilizados
+	if err := app.renderTemplate(w,r,"receipt", &templateData{
 		Data: data,
 	}); err != nil {
-		app.errorLog.Println(err)
+		app.errorLog.Panicln(err)
 	}
+}
+
+func (app *application) SaveCustomer(firstName string, lastName string, email string) (int, error) {
+	customer := models.Customer{
+		FirstName: firstName,
+		LastName: lastName,
+		Email: email,
+	}
+
+	id,err := app.DB.InsertCustomer(customer)
+	if err != nil {
+		app.errorLog.Println(err)
+		return 0, err
+	}
+	return id, nil
+}
+
+func (app *application) SaveTransaction(t models.Transaction) (int, error) {
+	id,err := app.DB.InsertTransaction(t)
+	if err != nil {
+		app.errorLog.Println(err)
+		return 0, err
+	}
+	return id, nil
+}
+
+func (app *application) SaveOrder(order models.Order) (int, error) {
+	id,err := app.DB.InsertOrder(order)
+	if err != nil {
+		app.errorLog.Println(err)
+		return 0, err
+	}
+	return id, nil
 }
 
 //dispaly page to buy one item

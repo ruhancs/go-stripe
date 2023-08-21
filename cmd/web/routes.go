@@ -8,9 +8,12 @@ import (
 
 func (app *application) routes() http.Handler{
 	mux := chi.NewRouter()
+	mux.Use(SessionLoad)//habilitar carregamento de sessao
 
+	mux.Get("/", app.Home)
 	mux.Get("/virtual-terminal", app.VirtualTerminal)
 	mux.Post("/payment-succeeded", app.PaymentSucceeded)
+	mux.Get("/receipt", app.Receipt)
 	mux.Get("/widget/{id}", app.ChargeOnce)
 
 	//informar diretorio dos arquivos estaticos

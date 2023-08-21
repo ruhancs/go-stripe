@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/gob"
 	"flag"
 	"fmt"
 	"log"
@@ -9,6 +10,7 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/alexedwards/scs/v2"
 	"github.com/joho/godotenv"
 	driverDB "github.com/ruhancs/go-stripe/internal/driver"
 	"github.com/ruhancs/go-stripe/internal/models"
@@ -16,6 +18,7 @@ import (
 
 const version = "1.0.0"
 const cssVersion = "1"
+var session *scs.SessionManager
 
 type config struct {
 	port int
@@ -37,6 +40,7 @@ type application struct {
 	templateCahe map[string]*template.Template
 	version string
 	DB models.DbModel
+	Session *scs.SessionManager
 }
 
 func (app *application) server() error {
@@ -55,6 +59,7 @@ func (app *application) server() error {
 }
 
 func main() {
+	gob.Register(TransactionData{})//colocar um map de string na sessao para inserir valores
 	err := godotenv.Load()
 	if err != nil {
 		fmt.Println("Error loading .env")
@@ -86,6 +91,10 @@ func main() {
 	}
 	defer conn.Close()
 
+	//configurar a sessao do usuario
+	session = scs.New()
+	session.Lifetime = 24 * time.Hour //tempo de vida da sessao 24h
+
 	templateCache := make(map[string] *template.Template)
 
 	app:= &application{
@@ -95,6 +104,7 @@ func main() {
 		templateCahe: templateCache,
 		version: version,
 		DB: models.DbModel{DB: conn},
+		Session: session,
 	}
 
 	err = app.server()
