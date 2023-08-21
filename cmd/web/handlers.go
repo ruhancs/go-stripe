@@ -50,6 +50,7 @@ func(app *application) GetTransactionData(r *http.Request) (TransactionData,erro
 	//dados do formulario
 	firstName := r.Form.Get("first_name")
 	lastName := r.Form.Get("last_name")
+	//cardHolderName := r.Form.Get("cardholder_name")
 	email := r.Form.Get("email")
 	paymentIntent := r.Form.Get("payment_intent")
 	paymentMethod := r.Form.Get("payment_method")
@@ -162,12 +163,57 @@ func (app *application) PaymentSucceeded(w http.ResponseWriter, r *http.Request)
 	http.Redirect(w,r, "/receipt", http.StatusSeeOther)
 }
 
+func (app *application) VirtualTerminalPaymentSucceeded(w http.ResponseWriter, r *http.Request) {
+	transactionData,err := app.GetTransactionData(r)
+	if err != nil {
+		app.errorLog.Panicln(err)
+		return
+	}
+
+	//create transaction
+	transaction := models.Transaction{
+		Amount: transactionData.PaymentAmount,
+		Currency: transactionData.PaymentCurrency,
+		LastFour: transactionData.LastFour,
+		ExpiryMonth: transactionData.ExpiryMonth,
+		ExpiryYear: transactionData.ExpiryYear,
+		PaymentIntent: transactionData.PaymentIntentID,
+		PaymentMethod: transactionData.PaymentMethodID,
+		BankReturnCode: transactionData.BankReturnCode,
+		TarnsactionStatusID: 2,//transaction status cleared ocorreu tudo certo
+	}
+	_,err = app.SaveTransaction(transaction)
+	if err != nil {
+		app.errorLog.Println(err)
+		return
+	}
+
+	//should write this data to session, and redirect user
+	//inserir o contexto da requisicao na sessao
+	app.Session.Put(r.Context(), "receipt", transactionData)
+
+	//redirecionar para receipt
+	http.Redirect(w,r, "/virtual-terminal-receipt", http.StatusSeeOther)
+}
+
 func (app *application) Receipt(w http.ResponseWriter, r *http.Request) {
 	txn := app.Session.Get(r.Context(), "receipt").(TransactionData)//pegar os dados da requisicao em receipt apos o pagamento
 	data := make(map[string]interface{})
 	data["txn"] = txn
 	app.Session.Remove(r.Context(), "receipt")// remover os dados da sessao apos utilizados
 	if err := app.renderTemplate(w,r,"receipt", &templateData{
+		Data: data,
+	}); err != nil {
+		app.errorLog.Panicln(err)
+	}
+}
+
+func (app *application) VirtualTerminalReceipt(w http.ResponseWriter, r *http.Request) {
+	txn := app.Session.Get(r.Context(), "receipt").(TransactionData)//pegar os dados da requisicao em receipt apos o pagamento
+	data := make(map[string]interface{})
+	data["txn"] = txn
+	app.Session.Remove(r.Context(), "receipt")// remover os dados da sessao apos utilizados
+	if err := app.renderTemplate(w,r,"virtual-terminal-receipt", &templateData{
 		Data: data,
 	}); err != nil {
 		app.errorLog.Panicln(err)
@@ -225,5 +271,22 @@ func (app *application) ChargeOnce(w http.ResponseWriter, r *http.Request) {
 		Data: data,
 	}, "stripe-js"); err != nil {
 		app.errorLog.Panicln(err)
+	}
+}
+
+func (app *application) BronzePlan(w http.ResponseWriter, r * http.Request) {
+
+	widget,err := app.DB.GetWidget(2)
+	if err != nil {
+		app.errorLog.Println(err)
+	}
+	//variavel para enviar dados para atemplate
+	data := make(map[string]interface{})
+	data["widget"] = widget
+
+	if err := app.renderTemplate(w,r, "bronze-plan", &templateData{
+		Data: data,
+	}); err != nil {
+		app.errorLog.Println(err)
 	}
 }
