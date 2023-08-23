@@ -23,5 +23,7 @@ func (app *application) routes() http.Handler {
 
 	mux.Get("/api/widget/{id}", app.GetWidgetById)
 
+	mux.Post("/api/create-customer-and-subscribe-to-plan", app.CreateCustomerAndSubscribe)
+
 	return mux
 }
