@@ -13,6 +13,8 @@ import (
 	"github.com/ruhancs/go-stripe/internal/models"
 )
 
+//gerar arquivo de migracao: soda generate fizz CreateTokensTable
+
 const version = "1.0.0"
 
 type config struct {

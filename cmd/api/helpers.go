@@ -5,6 +5,8 @@ import (
 	"errors"
 	"io"
 	"net/http"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 // writeJSON writes aribtrary data out as JSON
@@ -66,4 +68,34 @@ func (app *application) badRequest(w http.ResponseWriter, r *http.Request, err e
 	w.WriteHeader(http.StatusBadRequest)
 	w.Write(out)
 	return nil
+}
+
+func (app *application) invalidCredencials(w http.ResponseWriter) error {
+	var payload struct {
+		Error bool `json:"error"`
+		Message string `json:"message"`
+	}
+
+	payload.Error = true
+	payload.Message= "invalid authenticated credencials"
+
+	err := app.writeJSON(w, http.StatusUnauthorized, payload)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (app *application) passwordMatch(hash, password string) (bool, error) {
+	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
+	if err != nil {
+		switch {
+			//verificar se o erro e senha errada
+		case errors.Is(err, bcrypt.ErrMismatchedHashAndPassword):
+			return false, nil
+		default:
+			return false, err
+		}
+	}
+	return true, nil
 }
