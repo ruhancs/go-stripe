@@ -21,6 +21,9 @@ func (app *application) routes() http.Handler{
 	mux.Get("/receipt", app.Receipt)
 
 	mux.Get("/plans/bronze", app.BronzePlan)
+	mux.Get("/receipt/bronze", app.BronzePlanreceipt)
+
+	mux.Get("/login", app.LoginPage)
 
 	//informar diretorio dos arquivos estaticos
 	fileServer := http.FileServer(http.Dir("./static"))
