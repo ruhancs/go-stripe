@@ -2,9 +2,11 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -298,4 +300,48 @@ func (app *application) CreateAuthToken(w http.ResponseWriter, r *http.Request) 
 	payload.Token = token
 
 	_ = app.writeJSON(w, http.StatusOK, payload)
+}
+
+func (app *application) AuthenticateToken(r *http.Request) (*models.User, error) {
+	//pegar o token de Authorization
+	authorizationHeader := r.Header.Get("Authorization")
+	if authorizationHeader == "" {
+		return nil, errors.New("no authorization header received")
+	}
+	
+	headerParts := strings.Split(authorizationHeader, " ")
+	if len(headerParts) != 2 || headerParts[0] != "Bearer" {
+		return nil, errors.New("no authorization header received")
+	}
+	
+	token := headerParts[1]
+	if len(token) != 26 {
+		return nil, errors.New("invalid token")
+	}
+
+	//pegar o usuario da tabela de tokens
+	user,err := app.DB.GetUserForToken(token)
+	if err != nil {
+		return nil, errors.New("no user with this token")
+	}
+
+	return  user, nil
+}
+
+func (app *application) CheckAthentication(w http.ResponseWriter, r *http.Request) {
+	//validar token e pegar o usuario do token
+	user,err := app.AuthenticateToken(r)
+	if err != nil {
+		app.invalidCredencials(w)
+		return
+	}
+
+	//valid user
+	var payload struct {
+		Error bool `json:"error"`
+		Message string `json:"message"`
+	}
+	payload.Error = false
+	payload.Message = fmt.Sprintf("authenticate user %s", user.Email)
+	app.writeJSON(w,http.StatusOK, payload)
 }

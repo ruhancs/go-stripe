@@ -27,5 +27,12 @@ func (app *application) routes() http.Handler {
 
 	mux.Post("/api/authenticate", app.CreateAuthToken)
 
+	mux.Post("/api/is-authenticated", app.CheckAthentication)
+
+	//adicionar middleware de protecao de rotas
+	mux.Route("/api/admin", func(mux chi.Router) {
+		mux.Use(app.Auth)//middleware para verificar auth
+	})
+
 	return mux
 }
