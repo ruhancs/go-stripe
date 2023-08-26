@@ -32,7 +32,10 @@ func (app *application) routes() http.Handler {
 	//adicionar middleware de protecao de rotas
 	mux.Route("/api/admin", func(mux chi.Router) {
 		mux.Use(app.Auth)//middleware para verificar auth
+		
+		mux.Post("/virtual-terminal-succeded",app.VirtualTerminalPaymentSucceded)
 	})
+
 
 	return mux
 }
