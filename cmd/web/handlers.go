@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -8,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/ruhancs/go-stripe/internal/cards"
 	"github.com/ruhancs/go-stripe/internal/models"
+	"github.com/ruhancs/go-stripe/internal/urlsigner"
 )
 
 func (app *application) Home(w http.ResponseWriter, r *http.Request) {
@@ -318,6 +320,7 @@ func (app *application) PostLoginPage(w http.ResponseWriter, r *http.Request) {
 
 	id, err := app.DB.Authenticate(email,password)
 	if err != nil {
+		fmt.Println("error no db")
 		http.Redirect(w,r, "/login", http.StatusSeeOther)
 		return
 	}
@@ -331,4 +334,35 @@ func (app *application) Logout(w http.ResponseWriter, r *http.Request) {
 	app.Session.Destroy(r.Context())
 	app.Session.RenewToken(r.Context())
 	http.Redirect(w,r, "/login", http.StatusSeeOther)
+}
+
+func (app *application) ForgotPassword(w http.ResponseWriter, r *http.Request) {
+	if err := app.renderTemplate(w,r, "forgot-password", &templateData{}); err != nil {
+		app.errorLog.Println(err)
+	}
+}
+
+func (app *application) ShowResetPassword(w http.ResponseWriter,r *http.Request) {
+	resetUrl := r.RequestURI
+	testUrl := fmt.Sprintf("%s%s", app.config.frontend, resetUrl)
+
+	signer := urlsigner.Signer{
+		Secret: []byte(app.config.secretKey),
+	}
+
+	valid := signer.VerifyToken(testUrl)//checar se a url é valida
+
+	if !valid {
+		app.errorLog.Println("Invalid url - reset password ")
+		return
+	}
+	
+	data := make(map[string]interface{})
+	data["email"] = r.URL.Query().Get("email")//pegar o email do queryparams
+
+	if err := app.renderTemplate(w,r, "reset-password", &templateData{
+		Data: data,
+	}); err != nil {
+		app.errorLog.Println(err)
+	}
 }

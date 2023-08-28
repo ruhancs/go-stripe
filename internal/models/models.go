@@ -260,7 +260,7 @@ func (m *DbModel) Authenticate(email, password string) (int, error) {
 	var hashedPassword string
 
 	row := m.DB.QueryRowContext(ctx, "select id, password from users where email=?", email)
-	err := row.Scan(&id, hashedPassword)
+	err := row.Scan(&id, &hashedPassword)
 	if err != nil {
 		return id, err
 	}
@@ -273,4 +273,17 @@ func (m *DbModel) Authenticate(email, password string) (int, error) {
 	}
 
 	return id, nil
+}
+
+func(m *DbModel) UpdatePasswordForUser(u User, hashPassword string) error {
+	ctx,cancel := context.WithTimeout(context.Background(), 3 * time.Second)
+	defer cancel()
+
+	stmt := `update users set password = ? where id = ?`
+	_,err := m.DB.ExecContext(ctx, stmt, hashPassword, u.ID)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
