@@ -45,6 +45,14 @@ func (app *application) addDefaultData(td *templateData, r *http.Request) *templ
 	//adicionar SK do stripe para utilizar em qualquer template, secret e key inseridas em main.go
 	td.StripSK = app.config.stripe.secret
 	td.StripePK = app.config.stripe.key
+
+	//checar se o usuario esta autenticado verificando se tem userId salvo na sessao
+	if app.Session.Exists(r.Context(), "userID"){
+		td.IsAuthenticated = 1
+	} else {
+		td.IsAuthenticated = 0
+	}
+
 	return td
 }
 
@@ -56,7 +64,7 @@ func (app *application) renderTemplate(w http.ResponseWriter, r *http.Request, p
 	//verificar se a template existe em templateCache
 	_, templateInMap := app.templateCahe[templateToRender]
 
-	if app.config.env == "production" && templateInMap {
+	if templateInMap {
 		//utilizar a template que esta em cache
 		t = app.templateCahe[templateToRender]
 	} else {

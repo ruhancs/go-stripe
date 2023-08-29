@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/ruhancs/go-stripe/internal/cards"
+	"github.com/ruhancs/go-stripe/internal/encryption"
 	"github.com/ruhancs/go-stripe/internal/models"
 	"github.com/ruhancs/go-stripe/internal/urlsigner"
 )
@@ -343,6 +344,7 @@ func (app *application) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 }
 
 func (app *application) ShowResetPassword(w http.ResponseWriter,r *http.Request) {
+	email := r.URL.Query().Get("email")//pegar o email do queryparams
 	resetUrl := r.RequestURI
 	testUrl := fmt.Sprintf("%s%s", app.config.frontend, resetUrl)
 
@@ -356,13 +358,42 @@ func (app *application) ShowResetPassword(w http.ResponseWriter,r *http.Request)
 		app.errorLog.Println("Invalid url - reset password ")
 		return
 	}
+
+	//verificar se o token nao expirou testUrl é o token
+	expired := signer.Expire(testUrl, 60) //60 minutos para expiracao
+	if expired {
+		app.errorLog.Println("Link expired")
+		return
+	}
+
+	//encryptografar email
+	encryptor := encryption.Encryption{
+		Key: []byte(app.config.secretKey),
+	}
+	encryptedEmail, err := encryptor.Encrypt(email)
+	if err != nil {
+		app.errorLog.Println("encryption failed")
+		return
+	}
 	
 	data := make(map[string]interface{})
-	data["email"] = r.URL.Query().Get("email")//pegar o email do queryparams
+	data["email"] = encryptedEmail
 
 	if err := app.renderTemplate(w,r, "reset-password", &templateData{
 		Data: data,
 	}); err != nil {
+		app.errorLog.Println(err)
+	}
+}
+
+func (app *application) AllSales(w http.ResponseWriter, r *http.Request) {
+	if err := app.renderTemplate(w,r, "all-sales", &templateData{}); err != nil {
+		app.errorLog.Println(err)
+	}
+}
+
+func (app *application) AllSubscriptions(w http.ResponseWriter, r *http.Request) {
+	if err := app.renderTemplate(w,r, "all-subscriptions", &templateData{}); err != nil {
 		app.errorLog.Println(err)
 	}
 }

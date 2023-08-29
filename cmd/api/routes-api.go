@@ -37,6 +37,7 @@ func (app *application) routes() http.Handler {
 		mux.Use(app.Auth)//middleware para verificar auth
 		
 		mux.Post("/virtual-terminal-succeded",app.VirtualTerminalPaymentSucceded)
+		mux.Post("/all-sales", app.AllSales)
 	})
 
 

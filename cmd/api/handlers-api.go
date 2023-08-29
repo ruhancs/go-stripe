@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/ruhancs/go-stripe/internal/cards"
+	"github.com/ruhancs/go-stripe/internal/encryption"
 	"github.com/ruhancs/go-stripe/internal/models"
 	"github.com/ruhancs/go-stripe/internal/urlsigner"
 	"github.com/stripe/stripe-go/v72"
@@ -480,8 +481,17 @@ func (app *application) ResetPassword(w http.ResponseWriter, r * http.Request) {
 		app.badRequest(w, r, err)
 		return
 	}
+
+	encripter := encryption.Encryption{
+		Key: []byte(app.config.secretKey),
+	}
+	decriptedEmail,err := encripter.Decrypt(payload.Email)
+	if err != nil {
+		app.badRequest(w, r, err)
+		return
+	}
 	
-	user,err := app.DB.GetUserByEmail(payload.Email)
+	user,err := app.DB.GetUserByEmail(decriptedEmail)
 	if err != nil {
 		app.badRequest(w, r, err)
 		return
@@ -509,4 +519,13 @@ func (app *application) ResetPassword(w http.ResponseWriter, r * http.Request) {
 	resp.Message = "password successefuly changed"
 
 	app.writeJSON(w, http.StatusCreated, resp)
+}
+
+func(app *application) AllSales(w http.ResponseWriter, *r *http.Request) {
+	allSales,err := app.DB.GetAllOrders()
+	if err != nil {
+		app.badRequest(w, r, err)
+		return
+	}
+	app.writeJSON(w, http.StatusOK, allSales)
 }
