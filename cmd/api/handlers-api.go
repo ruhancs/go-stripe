@@ -550,3 +550,47 @@ func (app *application) GetSale(w http.ResponseWriter, r *http.Request) {
 	}
 	app.writeJSON(w, http.StatusOK, order)
 }
+
+func(app *application) RefundCharge(w http.ResponseWriter, r *http.Request) {
+	var chargeToRefund struct {
+		ID int `json:"id"`
+		PaymentIntent string `json:"pi"`
+		Amount int `json:"amount"`
+		Currency string `json:"currency"`
+	}
+
+	err := app.readJSON(w,r,&chargeToRefund)
+	if err != nil {
+		app.badRequest(w,r,err)
+		return
+	}
+
+	//validar amount da order se confere com o de refund
+	card := cards.Card{
+		Secret: app.config.stripe.secret,
+		Key: app.config.stripe.key,
+		Currency: chargeToRefund.Currency,
+	}
+	
+	err = card.Refunds(chargeToRefund.PaymentIntent, chargeToRefund.Amount)
+	if err != nil {
+		app.badRequest(w,r,err)
+		return
+	}
+
+	//atualizar order para status de refund 2
+	err = app.DB.UpdateOrderStatus(chargeToRefund.ID, 2)
+	if err != nil{
+		app.badRequest(w,r,errors.New("charge refund but database not be updated"))
+		return
+	}
+
+	var res struct {
+		Error bool `json:"error"`
+		Message string `json:"message"`
+	}
+	res.Error = false
+	res.Message = "Charge refunded"
+
+	app.writeJSON(w, http.StatusOK,res)
+}
