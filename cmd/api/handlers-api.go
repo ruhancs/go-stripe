@@ -174,6 +174,8 @@ func (app *application) CreateCustomerAndSubscribe(w http.ResponseWriter, r *htt
 			ExpiryMonth: data.ExpiryMonth,
 			ExpiryYear: data.ExpiryYear,
 			TarnsactionStatusID: 2,
+			PaymentIntent: subscription.ID,
+			PaymentMethod: data.PaymentMethod,
 		}
 
 		transactionID,err := app.SaveTransaction(transaction)
@@ -541,6 +543,7 @@ func (app *application) AllSubscriptions(w http.ResponseWriter, r *http.Request)
 
 func (app *application) GetSale(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+	
 	orderID,_ := strconv.Atoi(id)//converter para numero
 
 	order,err := app.DB.GetOrderByID(orderID)
@@ -548,6 +551,7 @@ func (app *application) GetSale(w http.ResponseWriter, r *http.Request) {
 		app.badRequest(w, r, err)
 		return
 	}
+
 	app.writeJSON(w, http.StatusOK, order)
 }
 
@@ -591,6 +595,47 @@ func(app *application) RefundCharge(w http.ResponseWriter, r *http.Request) {
 	}
 	res.Error = false
 	res.Message = "Charge refunded"
+
+	app.writeJSON(w, http.StatusOK,res)
+}
+
+func (app *application) CancelSubscription(w http.ResponseWriter, r *http.Request) {
+	var subToCancel struct {
+		ID int `json:"id"`
+		PaymentIntent string `json:"pi"`
+		Currency string `json:"currency"`
+	}
+
+	err := app.readJSON(w,r, &subToCancel)
+	if err != nil{
+		app.badRequest(w,r,err)
+		return
+	}
+	card := cards.Card{
+		Secret: app.config.stripe.secret,
+		Key: app.config.stripe.key,
+		Currency: subToCancel.Currency,
+	}
+
+	err = card.CancelSubscription(subToCancel.PaymentIntent)
+	if err != nil{
+		app.badRequest(w,r,err)
+		return
+	}
+
+	//atualizar order para status de refund 2
+	err = app.DB.UpdateOrderStatus(subToCancel.ID, 3)//status 3 é inscricao cancelada
+	if err != nil{
+		app.badRequest(w,r,errors.New("subscription was cancelled but database not be updated"))
+		return
+	}
+
+	var res struct {
+		Error bool `json:"error"`
+		Message string `json:"message"`
+	}
+	res.Error = false
+	res.Message = "Subscription Cancelled"
 
 	app.writeJSON(w, http.StatusOK,res)
 }
