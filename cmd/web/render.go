@@ -19,6 +19,7 @@ type templateData struct {
 	Warning string
 	Error string
 	IsAuthenticated int
+	UserID int
 	API string
 	CssVersion string
 	StripSK string
@@ -49,8 +50,10 @@ func (app *application) addDefaultData(td *templateData, r *http.Request) *templ
 	//checar se o usuario esta autenticado verificando se tem userId salvo na sessao
 	if app.Session.Exists(r.Context(), "userID"){
 		td.IsAuthenticated = 1
+		td.UserID = app.Session.GetInt(r.Context(), "userID")
 	} else {
 		td.IsAuthenticated = 0
+		td.UserID = 0
 	}
 
 	return td
