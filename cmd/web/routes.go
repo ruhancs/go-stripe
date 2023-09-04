@@ -11,6 +11,8 @@ func (app *application) routes() http.Handler{
 	mux.Use(SessionLoad)//habilitar carregamento de sessao
 
 	mux.Get("/", app.Home)
+	//quando o usuario esta logado conecta ele no ws no base.page.gohtml
+	mux.Get("/ws",app.WsEndpoint)
 	
 	mux.Route("/admin", func(mux chi.Router) {
 		mux.Use(app.Auth)

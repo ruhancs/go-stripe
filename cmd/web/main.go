@@ -115,6 +115,9 @@ func main() {
 		Session: session,
 	}
 
+	//executar em background conexao com websocket
+	go app.ListenToWsChannel()
+
 	err = app.server()
 	if err != nil {
 		app.errorLog.Println(err)
