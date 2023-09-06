@@ -18,6 +18,13 @@ type Order struct {
 	LastName string `json:"last_name"`
 	Email string `json:"email"`
 	CreatedAt time.Time `json:"created_at"`
+	//Items []Products
+}
+
+type Products struct {
+	Name string
+	Amount int
+	Quantity int
 }
 
 func (app *application) CreateAndSendInvoice(w http.ResponseWriter, r *http.Request) {
@@ -29,7 +36,24 @@ func (app *application) CreateAndSendInvoice(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	//gerar pdf de nota fiscal
+	err = app.createInvoicePDF(order)
+	if err != nil {
+		app.badRequest(w, r, err)
+		return
+	}
 
+	//criar email para enviar
+	attachments := []string {
+		fmt.Sprintf("./invoices/%d.pdf", order.ID),
+	}
+
+	//enviar email
+	err = app.SendEmail("info@widgets.com", order.Email, "You invoice", "invoice", attachments, nil)
+	if err != nil {
+		app.badRequest(w, r, err)
+		return
+	}
 
 	var resp struct {
 		Error bool `json:"error"`
@@ -66,6 +90,7 @@ func (app *application) createInvoicePDF(order Order) error {
 	//escrever o data
 	pdf.CellFormat(97, 8, order.CreatedAt.Format("2006-01-02"), "", 0, "L", false, 0, "")
 	
+
 	pdf.SetX(58)
 	pdf.SetY(93)
 	pdf.CellFormat(155, 8, order.Product, "", 0, "L", false, 0, "")

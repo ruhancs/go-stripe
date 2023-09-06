@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -99,6 +101,18 @@ func(app *application) GetTransactionData(r *http.Request) (TransactionData,erro
 	return transactionData,nil
 }
 
+type Invoice struct {
+	ID int `json:"id"`
+	Quantity int `json:"quantity"`
+	Amount int `json:"amount"`
+	Product string `json:"product"`
+	FirstName string `json:"first_name"`
+	LastName string `json:"last_name"`
+	Email string `json:"email"`
+	CreatedAt time.Time `json:"created_at"`
+	//Items []Products
+}
+
 func (app *application) PaymentSucceeded(w http.ResponseWriter, r *http.Request) {
 	err:= r.ParseForm()//pegar erros do formulario
 	if err != nil {
@@ -152,10 +166,27 @@ func (app *application) PaymentSucceeded(w http.ResponseWriter, r *http.Request)
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
-	_,err = app.SaveOrder(order)
+	orderID,err := app.SaveOrder(order)
 	if err != nil {
 		app.errorLog.Println(err)
 		return
+	}
+
+	// chamar microservico para gerar nota fiscal por email
+	invoice := Invoice {
+		ID: orderID,
+		Amount: order.Amount,
+		Product: "Widget",
+		Quantity: order.Quantity,
+		FirstName: transactionData.FirstName,
+		LastName: transactionData.LastName,
+		Email: transactionData.Email,
+		CreatedAt: time.Now(),
+	}
+
+	err = app.CallInvoiceMicro(invoice)
+	if err != nil {
+		app.errorLog.Println(err)
 	}
 
 	//should write this data to session, and redirect user
@@ -164,6 +195,30 @@ func (app *application) PaymentSucceeded(w http.ResponseWriter, r *http.Request)
 
 	//redirecionar para receipt
 	http.Redirect(w,r, "/receipt", http.StatusSeeOther)
+}
+
+func(app *application) CallInvoiceMicro(invoice Invoice) error {
+	url := "http://localhost:5000/invoice/create-and-send"
+	out, err := json.MarshalIndent(invoice, "", "\t")
+	if err != nil {
+		return err
+	}
+
+	req,err := http.NewRequest("POST", url, bytes.NewBuffer(out))
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	app.infolog.Println(resp.Body)
+	return nil
 }
 
 func (app *application) VirtualTerminalPaymentSucceeded(w http.ResponseWriter, r *http.Request) {

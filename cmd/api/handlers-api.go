@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"github.com/ruhancs/go-stripe/internal/encryption"
 	"github.com/ruhancs/go-stripe/internal/models"
 	"github.com/ruhancs/go-stripe/internal/urlsigner"
+	"github.com/ruhancs/go-stripe/internal/validator"
 	"github.com/stripe/stripe-go/v72"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -117,6 +119,18 @@ func (app *application) GetWidgetById(w http.ResponseWriter, r *http.Request) {
 	w.Write(out)
 }
 
+type Invoice struct {
+	ID int `json:"id"`
+	Quantity int `json:"quantity"`
+	Amount int `json:"amount"`
+	Product string `json:"product"`
+	FirstName string `json:"first_name"`
+	LastName string `json:"last_name"`
+	Email string `json:"email"`
+	CreatedAt time.Time `json:"created_at"`
+	//Items []Products
+}
+
 func (app *application) CreateCustomerAndSubscribe(w http.ResponseWriter, r *http.Request) {
 	//dados recebidos de do formulario de bronze-plan.page
 	var data stripePayload
@@ -126,7 +140,16 @@ func (app *application) CreateCustomerAndSubscribe(w http.ResponseWriter, r *htt
 		return
 	}
 
-	app.infolog.Println(data.Email,data.LastFour, data.PaymentMethod, data.Plan)
+	//validate data
+	v := validator.New()
+	//validacao do first_name tamanho de no minimo 2 caracteres
+	//first_name deve ser exatamente o campo de id do componente na template
+	v.Check(len(data.FirstName) > 1, "first_name", "must be at least 2 character")
+
+	if !v.Valid() {
+		app.failedValidation(w, r, v.Errors)
+		return
+	}
 
 	card := cards.Card{
 		Secret: app.config.stripe.secret,
@@ -195,11 +218,27 @@ func (app *application) CreateCustomerAndSubscribe(w http.ResponseWriter, r *htt
 			UpdatedAt: time.Now(),
 		}
 
-		_,err = app.SaveOrder(order)
+		orderID,err := app.SaveOrder(order)
 		if err != nil {
 			app.errorLog.Println(err)
 			return
 		}
+
+		//criar invoice
+		invoice := Invoice {
+			ID: orderID,
+			Amount: order.Amount,
+			Product: order.Widget.Description,
+			Quantity: order.Quantity,
+			FirstName: data.FirstName,
+			LastName: data.LastName,
+			Email: data.Email,
+			CreatedAt: time.Now(),
+		}
+
+		//chamar micro de invoice
+		app.CallInvoiceMicro(invoice)
+
 	}
 
 	resp := jsonresponse{
@@ -215,6 +254,30 @@ func (app *application) CreateCustomerAndSubscribe(w http.ResponseWriter, r *htt
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(out)
+}
+
+func(app *application) CallInvoiceMicro(invoice Invoice) error {
+	url := "http://localhost:5000/invoice/create-and-send"
+	out, err := json.MarshalIndent(invoice, "", "\t")
+	if err != nil {
+		return err
+	}
+
+	req,err := http.NewRequest("POST", url, bytes.NewBuffer(out))
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	app.infolog.Println(resp.Body)
+	return nil
 }
 
 func (app *application) SaveCustomer(firstName string, lastName string, email string) (int, error) {

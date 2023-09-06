@@ -19,7 +19,7 @@ func (app *application) routes() http.Handler {
 		MaxAge: 300,// 5 minutos
 	}))
 
-	mux.Get("/invoice/create-and-send", app.CreateAndSendInvoice)
+	mux.Post("/invoice/create-and-send", app.CreateAndSendInvoice)
 
 	return mux
 }
